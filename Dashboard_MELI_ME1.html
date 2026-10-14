@@ -539,12 +539,12 @@ footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);font-si
     <div class="grid g2" style="margin-top:14px">
       <div class="card">
         <h3>&Aacute; % de pedidos com problema por semana &times; proje&ccedil;&atilde;o (4 semanas)</h3>
-        <p class="hint">Linha azul cont&iacute;nua = semanas j&aacute; encerradas (% de pedidos com problema: atraso 1&ndash;6, atraso 7+ ou n&atilde;o entregue atrasado). Linha vermelha tracejada = proje&ccedil;&atilde;o pela tend&ecirc;ncia linear das &uacute;ltimas 8 semanas. A faixa rosa &eacute; o horizonte projetado.</p>
+        <p class="hint">Linha azul cont&iacute;nua = <b>semanas fechadas</b> (% de pedidos com problema: atraso 1&ndash;6, atraso 7+ ou n&atilde;o entregue atrasado). Semanas <b>parciais</b> (ainda com a maioria dos pedidos dentro do prazo, sem desfecho) ficam fora da linha e da proje&ccedil;&atilde;o &mdash; aparecem em cinza no gr&aacute;fico de volume e marcadas como &ldquo;parcial&rdquo; na tabela. Linha tracejada = proje&ccedil;&atilde;o pela tend&ecirc;ncia linear das &uacute;ltimas 8 semanas fechadas. A faixa rosa &eacute; o horizonte projetado.</p>
         <div id="t6proj"></div>
       </div>
       <div class="card">
         <h3>Volume semanal com problema</h3>
-        <p class="hint">Barras = quantidade absoluta de pedidos com problema por semana (mesma defini&ccedil;&atilde;o do gr&aacute;fico ao lado); em vermelho as semanas acima da m&eacute;dia recente.</p>
+        <p class="hint">Barras = quantidade absoluta de pedidos com problema por semana (mesma defini&ccedil;&atilde;o do gr&aacute;fico ao lado); em vermelho as semanas acima da m&eacute;dia recente e em <b style="color:#546e7a">cinza</b> as semanas parciais (resultado ainda em aberto).</p>
         <div id="t6wbar"></div>
       </div>
     </div>
@@ -1531,15 +1531,22 @@ function renderT6(){
   b.forEach(function(r){
     if(!r[C.emi])return;
     var k=t6WeekKey(r[C.emi]);
-    if(!wk[k])wk[k]={k:k,n:0,p:0,c1:0,c2:0,c4:0,dA:0};
+    if(!wk[k])wk[k]={k:k,n:0,p:0,c1:0,c2:0,c4:0,c3:0,dA:0};
     var o=wk[k]; o.n++;
     if(prob(r)){o.p++;if(r[C.cat]===1)o.c1++;if(r[C.cat]===2)o.c2++;if(r[C.cat]===4)o.c4++;}
+    else if(r[C.cat]===3)o.c3++;
     if(r[C.atD]!=null&&r[C.atD]>=1)o.dA++;
   });
   var maxE=META.maxEmissao;
+  /* semana "parcial": maioria dos pedidos ainda dentro do prazo (cat 3) — resultado em aberto */
+  var isWkM=function(o){return o.n>0 && o.c3/o.n<0.4;};
   var keys=Object.keys(wk).sort().filter(function(k){return addDays(k,6)<=maxE;});
   var last=keys.slice(-12);
-  var obs=last.map(function(k){var o=wk[k];return {l:fmtD(k).slice(0,5),v:o.n?100*o.p/o.n:0,o:o};});
+  var obsAll=last.map(function(k){var o=wk[k];return {l:fmtD(k).slice(0,5),v:o.n?100*o.p/o.n:0,o:o,m:isWkM(o)};});
+  var matKeys=keys.filter(function(k){return isWkM(wk[k]);});
+  if(matKeys.length<3)matKeys=keys;
+  var lastM=matKeys.slice(-12);
+  var obs=lastM.map(function(k){var o=wk[k];return {l:fmtD(k).slice(0,5),v:o.n?100*o.p/o.n:0,o:o};});
   var src=obs.slice(-8), m=src.length, sx=0,sy=0,sxx=0,sxy=0;
   src.forEach(function(p,i){sx+=i;sy+=p.v;sxx+=i*i;sxy+=i*p.v;});
   var den=(m*sxx-sx*sx);
@@ -1547,7 +1554,7 @@ function renderT6(){
   var icept=m? (sy-slope*sx)/m : 0;
   var avgN=avg(src.map(function(p){return p.o.n;}))||0;
   var proj=[];
-  var nextK=last.length? addDays(last[last.length-1],7):null;
+  var nextK=lastM.length? addDays(lastM[lastM.length-1],7):null;
   if(nextK){
     var curV=obs.length? obs[obs.length-1].v : 0;
     for(var j=1;j<=4;j++){
@@ -1568,15 +1575,18 @@ function renderT6(){
   var k='';
   k+=kpi('red','Pedidos que j\u00e1 prejudicam',nf0(risco),'7+ dias de atraso: '+nf0(c2)+' \u00b7 n\u00e3o entregues atrasados: '+nf0(c4));
   k+=kpi('amber','Em risco de virar problema',nf0(c1+perto),'atraso 1\u20136: '+nf0(c1)+' \u00b7 n\u00e3o entregues com AY\u22642: '+nf0(perto));
-  k+=kpi(slope>0?'red':'green','% com problema \u00faltima semana',nf1(cur)+'%','tend\u00eancia: '+(slope>0?'+':'')+nf1(slope)+' p.p./semana');
-  k+=kpi(slope>0?'red':'green','Proje\u00e7\u00e3o em 4 semanas',nf1(pr4)+'%','se a tend\u00eancia continuar \u00b7 ~'+nf0(pr4n)+' pedidos/semana com problema');
+  k+=kpi(slope>0?'red':'green','% com problema \u2014 \u00faltima semana fechada',nf1(cur)+'%',
+    (lastM.length? 'semana de '+fmtD(lastM[lastM.length-1]).slice(0,5)+' \u00b7 ' : '')+'tend\u00eancia: '+(slope>0?'+':'')+nf1(slope)+' p.p./semana');
+  k+=kpi(slope>0?'red':'green','Proje\u00e7\u00e3o em 4 semanas',nf1(pr4)+'%','a partir da \u00faltima semana fechada \u00b7 ~'+nf0(pr4n)+' pedidos/semana com problema');
   k+=kpi('','Com problema no recorte',nf0(c1+c2+c4),pct(c1+c2+c4,b.length)+' dos pedidos \u00b7 n\u00e3o entregues no prazo: '+nf0(c3));
   $('t6k').innerHTML=k;
 
   lineChart($('t6proj'),obs,proj);
 
   var avgV=avg(obs.map(function(p){return p.v;}))||0;
-  vbars($('t6wbar'),obs.map(function(p){
+  vbars($('t6wbar'),obsAll.map(function(p){
+    if(!p.m)return {l:p.l,v:p.o.p,c:'#90a4ae',p:p.o.n?nf1(p.v)+'%':null,
+      tip:'semana parcial: '+nf0(p.o.c3)+' de '+nf0(p.o.n)+' pedidos ainda sem desfecho (fora da proje\u00e7\u00e3o)'};
     return {l:p.l,v:p.o.p,c:p.v>avgV*1.15?'#c62828':'#1f6feb',p:p.o.n?nf1(p.v)+'%':null};
   }));
 
@@ -1680,17 +1690,22 @@ function renderT6(){
 
   var jr=last.map(function(k){
     var o=wk[k];
-    return {lab:fmtD(k),n:o.n,p:o.p,pctv:o.n?100*o.p/o.n:0,c1:o.c1,c2:o.c2,c4:o.c4,dA:o.dA};
+    return {lab:fmtD(k),n:o.n,p:o.p,pctv:o.n?100*o.p/o.n:0,c1:o.c1,c2:o.c2,c4:o.c4,dA:o.dA,
+            m:isWkM(o),abert:o.n?100*o.c3/o.n:0};
   });
   miniTable($('t6tbl'),[
     {h:'Semana (in\u00edcio)',get:function(o){return o.lab;}},
     {h:'Pedidos',num:true,get:function(o){return nf0(o.n);}},
     {h:'Com problema',num:true,get:function(o){return nf0(o.p);}},
-    {h:'% problema',num:true,cell:function(o){return '<b style="color:'+(o.pctv>=25?'#c62828':(o.pctv>=18?'#b87400':'#2e7d32'))+'">'+nf1(o.pctv)+'%</b>';}},
+    {h:'% problema',num:true,cell:function(o){return o.m?
+      '<b style="color:'+(o.pctv>=25?'#c62828':(o.pctv>=18?'#b87400':'#2e7d32'))+'">'+nf1(o.pctv)+'%</b>' :
+      '<b style="color:#8a97a3">'+nf1(o.pctv)+'%</b>';}},
     {h:'Atraso 1\u20136',num:true,get:function(o){return nf0(o.c1);}},
     {h:'Atraso 7+',num:true,cell:function(o){return o.c2? '<b style="color:#8e0000">'+nf0(o.c2)+'</b>':'0';}},
     {h:'N\u00e3o entreg. atras.',num:true,cell:function(o){return o.c4? '<b style="color:#6a1b9a">'+nf0(o.c4)+'</b>':'0';}},
-    {h:'Desp. ap\u00f3s prazo',num:true,get:function(o){return nf0(o.dA);}}
+    {h:'Desp. ap\u00f3s prazo',num:true,get:function(o){return nf0(o.dA);}},
+    {h:'Sem desfecho',num:true,cell:function(o){return o.m? '\u2014' : '<b style="color:#b87400">'+nf1(o.abert)+'%</b>';}},
+    {h:'Situa\u00e7\u00e3o',cell:function(o){return o.m? pill('fechada','p-green') : pill('parcial','p-amber');}}
   ],jr);
 
   var worst=rt.filter(function(o){return o.c2+o.c4>0;})[0]||rt[0];
