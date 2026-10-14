@@ -1,2 +1,9 @@
-# CSV de origem contém CPFs/nomes — nunca versionar
+﻿# CSV/xlsx de origem contem dados operacionais - nunca versionar
 *.csv
+*.xlsx
+
+# backup local de seguranca
+BACKUP_SEGURANCA_*/
+
+# arquivos temporarios soltos
+2503D670
